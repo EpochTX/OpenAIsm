@@ -1,14 +1,12 @@
 // ==UserScript==
-// @name         ChatGPT  Checker 
-// @namespace    https://chatgpt.com/
-// @version      1.0.0
-// @description  显示 ChatGPT 请求模型、服务端回复模型标注及路由是否一致
+// @name         ChatGPT 降智检测
+// @namespace    https://github.com/EpochTX/OpenAIsm
+// @version      1.0
+// @description  ChatGPT 降智一键检测脚本
 // @author       EpochTX
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
-// @run-at       document-start
 // @grant        none
-// @sandbox      raw
 // ==/UserScript==
 
 (() => {
