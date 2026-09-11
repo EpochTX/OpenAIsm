@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        ChatGPT 降智检测
 // @namespace   https://github.com/EpochTX/OpenAIsm
-// @version     1.1
+// @version     1.2
 // @description ChatGPT 降智一键检测脚本
 // @author      epochtx
 // @match       https://chatgpt.com/*
@@ -12,7 +12,7 @@
 (() => {
     "use strict";
 
-    const VERSION = "1.1";
+    const VERSION = "1.2";
 
     if (window.__CHATGPT_ROUTE_CHECKER_V6__) {
         return;
@@ -189,7 +189,7 @@
         const reqFam = modelFamily(state.requestModel);
         const srvFam = modelFamily(state.serverModel);
         if (reqFam && srvFam && reqFam === srvFam) {
-            return { text: "同系列模型 (细分)", icon: "✅", color: "#34d399", bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.2)" };
+            return { text: "同系列但具体模型不同", icon: "⚠️", color: "#fbbf24", bg: "rgba(251,191,36,0.08)", border: "rgba(251,191,36,0.25)" };
         }
 
         return { text: "模型不一致 (疑似降智)", icon: "🚨", color: "#f87171", bg: "rgba(248,113,113,0.12)", border: "rgba(248,113,113,0.3)" };
