@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        ChatGPT 降智检测
 // @namespace   https://github.com/EpochTX/OpenAIsm
-// @version     1.2
+// @version     1.3
 // @description ChatGPT 降智一键检测脚本
 // @author      epochtx
 // @match       https://chatgpt.com/*
@@ -12,7 +12,7 @@
 (() => {
     "use strict";
 
-    const VERSION = "1.2";
+    const VERSION = "1.3";
 
     if (window.__CHATGPT_ROUTE_CHECKER_V6__) {
         return;
@@ -24,6 +24,7 @@
     const nativeXHROpen = NativeXHR.prototype.open;
     const nativeXHRSend = NativeXHR.prototype.send;
     const nativeBeacon = navigator.sendBeacon ? navigator.sendBeacon.bind(navigator) : null;
+    const NativeWebSocket = window.WebSocket;
 
     const state = {
         active: false,
@@ -374,6 +375,13 @@
             if (typeof body === "string") return body;
             if (body instanceof Blob) return await body.text();
             if (body instanceof URLSearchParams) return body.toString();
+            if (body instanceof FormData) {
+                const values = [];
+                for (const [key, value] of body.entries()) {
+                    values.push(`${key}=${typeof value === "string" ? value : "[blob]"}`);
+                }
+                return values.join("&");
+            }
             if (body instanceof ArrayBuffer) return new TextDecoder().decode(body);
             if (ArrayBuffer.isView(body)) return new TextDecoder().decode(body);
         } catch {}
@@ -388,8 +396,23 @@
         return "";
     }
 
-    const isConversation = (u, m) => m === "POST" && /\/backend-api\/f\/conversation(?:\?|$)/.test(u);
-    const isTelemetry = (u, m) => m === "POST" && /\/ces\/v1\/telemetry\/intake(?:\?|$)/.test(u);
+    function urlPath(url) {
+        try { return new URL(String(url || ""), location.href).pathname; } catch { return String(url || "").split("?")[0]; }
+    }
+
+    const isConversation = (u, m) => {
+        if (m !== "POST") return false;
+        const path = urlPath(u);
+        return /\/backend-api\/(?:f\/)?conversation(?:\/|$)/.test(path)
+            || /\/conversation(?:\/|$)/.test(path);
+    };
+
+    const isTelemetry = (u, m) => {
+        if (m !== "POST") return false;
+        const path = urlPath(u);
+        return /\/ces\/v\d+\/telemetry\/intake(?:\/|$)/.test(path)
+            || /\/telemetry\/intake(?:\/|$)/.test(path);
+    };
 
     window.fetch = async function(input, init = {}) {
         const url = typeof input === "string" ? input : input?.url || "";
@@ -431,8 +454,53 @@
             }
         });
 
+        if (isConversation(url, method) || isTelemetry(url, method)) {
+            this.addEventListener("load", () => {
+                try {
+                    if (!this.responseType || this.responseType === "text") scanWholeText(this.responseText);
+                    else if (this.responseType === "json") scanObject(this.response);
+                } catch {}
+            });
+        }
+
         return nativeXHRSend.call(this, body);
     };
+
+    if (nativeBeacon) {
+        try {
+            navigator.sendBeacon = function(url, data) {
+                const method = "POST";
+                if (isConversation(url, method) || isTelemetry(url, method)) {
+                    bodyToText(data).then(text => {
+                        if (isConversation(url, method)) {
+                            try { beginOrUpdateTurn(JSON.parse(text)); } catch { scanWholeText(text); }
+                        } else {
+                            scanWholeText(text);
+                        }
+                    });
+                }
+                return nativeBeacon(url, data);
+            };
+        } catch {}
+    }
+
+    if (NativeWebSocket) {
+        try {
+            window.WebSocket = class RouteCheckerWebSocket extends NativeWebSocket {
+                constructor(...args) {
+                    super(...args);
+                    this.addEventListener("message", event => {
+                        bodyToText(event.data).then(scanWholeText);
+                    });
+                }
+
+                send(data) {
+                    bodyToText(data).then(scanWholeText);
+                    return super.send(data);
+                }
+            };
+        } catch {}
+    }
 
     render();
     console.log(`ChatGPT Route Checker v${VERSION} 已启动`);
