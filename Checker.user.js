@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        ChatGPT 降智检测
 // @namespace   https://github.com/EpochTX/OpenAIsm
-// @version     1.3
+// @version     1.4
 // @description ChatGPT 降智一键检测脚本
 // @author      epochtx
 // @match       https://chatgpt.com/*
@@ -12,7 +12,7 @@
 (() => {
     "use strict";
 
-    const VERSION = "1.3";
+    const VERSION = "1.4";
 
     if (window.__CHATGPT_ROUTE_CHECKER_V6__) {
         return;
@@ -61,11 +61,16 @@
             transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             overflow: hidden;
             user-select: none;
+            touch-action: none;
         }
         #__chatgpt_route_checker_panel__.collapsed {
             width: auto;
             border-radius: 28px;
-            cursor: pointer;
+            cursor: grab;
+        }
+        #__chatgpt_route_checker_panel__.dragging {
+            transition: none !important;
+            cursor: grabbing !important;
         }
         .cg-rc-body {
             padding: 14px;
@@ -158,6 +163,108 @@
     panel.id = "__chatgpt_route_checker_panel__";
     document.documentElement.appendChild(panel);
 
+    const POSITION_STORAGE_KEY = "__chatgpt_route_checker_position_v1__";
+    const dragState = {
+        active: false,
+        pointerId: null,
+        startX: 0,
+        startY: 0,
+        originLeft: 0,
+        originTop: 0,
+        moved: false,
+        suppressClick: false
+    };
+
+    function clampPanelPosition(left, top) {
+        const gap = 8;
+        const width = panel.offsetWidth || 0;
+        const height = panel.offsetHeight || 0;
+        const maxLeft = Math.max(gap, window.innerWidth - width - gap);
+        const maxTop = Math.max(gap, window.innerHeight - height - gap);
+        return {
+            left: Math.min(Math.max(left, gap), maxLeft),
+            top: Math.min(Math.max(top, gap), maxTop)
+        };
+    }
+
+    function setPanelPosition(left, top, persist = false) {
+        const next = clampPanelPosition(left, top);
+        panel.style.left = `${next.left}px`;
+        panel.style.top = `${next.top}px`;
+        panel.style.right = "auto";
+        panel.style.bottom = "auto";
+
+        if (persist) {
+            try {
+                localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(next));
+            } catch {}
+        }
+    }
+
+    function restorePanelPosition() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(POSITION_STORAGE_KEY) || "null");
+            if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
+                setPanelPosition(saved.left, saved.top);
+            }
+        } catch {}
+    }
+
+    function keepPanelInViewport() {
+        if (!panel.style.left && !panel.style.top) return;
+        const rect = panel.getBoundingClientRect();
+        setPanelPosition(rect.left, rect.top);
+    }
+
+    panel.addEventListener("pointerdown", event => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        if (event.target.closest("button")) return;
+
+        const rect = panel.getBoundingClientRect();
+        dragState.active = true;
+        dragState.pointerId = event.pointerId;
+        dragState.startX = event.clientX;
+        dragState.startY = event.clientY;
+        dragState.originLeft = rect.left;
+        dragState.originTop = rect.top;
+        dragState.moved = false;
+
+        panel.classList.add("dragging");
+        try { panel.setPointerCapture(event.pointerId); } catch {}
+    });
+
+    panel.addEventListener("pointermove", event => {
+        if (!dragState.active || event.pointerId !== dragState.pointerId) return;
+
+        const dx = event.clientX - dragState.startX;
+        const dy = event.clientY - dragState.startY;
+
+        if (!dragState.moved && Math.hypot(dx, dy) < 4) return;
+        dragState.moved = true;
+        event.preventDefault();
+        setPanelPosition(dragState.originLeft + dx, dragState.originTop + dy);
+    });
+
+    function finishDrag(event) {
+        if (!dragState.active || event.pointerId !== dragState.pointerId) return;
+
+        if (dragState.moved) {
+            const rect = panel.getBoundingClientRect();
+            setPanelPosition(rect.left, rect.top, true);
+            dragState.suppressClick = true;
+            setTimeout(() => { dragState.suppressClick = false; }, 0);
+        }
+
+        dragState.active = false;
+        dragState.pointerId = null;
+        panel.classList.remove("dragging");
+        try { panel.releasePointerCapture(event.pointerId); } catch {}
+    }
+
+    panel.addEventListener("pointerup", finishDrag);
+    panel.addEventListener("pointercancel", finishDrag);
+    window.addEventListener("resize", () => requestAnimationFrame(keepPanelInViewport));
+
     function esc(val) {
         return String(val).replace(/[&<>"']/g, c => ({
             "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -208,9 +315,14 @@
                 </div>
             `;
             panel.onclick = () => {
+                if (dragState.suppressClick) {
+                    dragState.suppressClick = false;
+                    return;
+                }
                 state.isCollapsed = false;
                 render();
             };
+            requestAnimationFrame(keepPanelInViewport);
             return;
         }
 
@@ -254,6 +366,8 @@
                 render();
             };
         }
+
+        requestAnimationFrame(keepPanelInViewport);
     }
 
     function extractTurnKey(req) {
@@ -503,5 +617,6 @@
     }
 
     render();
+    requestAnimationFrame(restorePanelPosition);
     console.log(`ChatGPT Route Checker v${VERSION} 已启动`);
 })();
