@@ -62,6 +62,7 @@
             overflow: hidden;
             user-select: none;
             touch-action: none;
+            cursor: grab;
         }
         #__chatgpt_route_checker_panel__.collapsed {
             width: auto;
@@ -307,7 +308,7 @@
         const v = verdictInfo();
 
         if (state.isCollapsed) {
-            panel.className = "collapsed";
+            panel.classList.add("collapsed");
             panel.innerHTML = `
                 <div class="cg-rc-status-pill" title="点击展开">
                     <span>${v.icon}</span>
@@ -326,7 +327,7 @@
             return;
         }
 
-        panel.className = "";
+        panel.classList.remove("collapsed");
         panel.onclick = null;
         panel.innerHTML = `
             <div class="cg-rc-body">
